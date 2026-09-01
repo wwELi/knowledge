@@ -224,7 +224,7 @@ export function useRagChat(): UseRagChatResult {
           }
           if (event !== '') return
           const delta = extractDeltaContent(data)
-          if (delta !== '') updateLastAssistant(msg => ({ ...msg, content: msg.content + delta }))
+          if (delta) updateLastAssistant(msg => ({ ...msg, content: msg.content + delta }))
         })
       } catch (err) {
         // 失败/中止时保留已生成的部分内容，但移除空的占位气泡
