@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import documents
+from app.api import chat, documents
 
 app = FastAPI(title="Knowledge Base RAG")
 
@@ -20,5 +20,4 @@ def health() -> dict[str, str]:
 
 
 app.include_router(documents.router)
-
-# Router registration for T7 (query/chat API): app.include_router(...)
+app.include_router(chat.router)
