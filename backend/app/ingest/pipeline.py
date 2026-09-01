@@ -1,6 +1,7 @@
 """Background document ingestion: extract -> chunk -> embed -> persist."""
 
 import asyncio
+import sys
 import uuid
 from pathlib import Path
 
@@ -53,10 +54,20 @@ async def process_document(doc_id: uuid.UUID, filepath: Path) -> None:
                 "UPDATE documents SET status = 'ready', chunk_count = %s WHERE id = %s",
                 (count, doc_id),
             )
-    except Exception as exc:
-        pool = await get_pool()
-        async with pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                "UPDATE documents SET status = 'failed', error = %s WHERE id = %s",
-                (str(exc), doc_id),
+    except Exception as exc:  # noqa: BLE001 - fallback must catch every failure
+        # The fallback itself must never raise: with the DB down it would
+        # kill the background task and leave the document stuck in
+        # 'processing' forever (frontend polls it every 3s).
+        try:
+            pool = await get_pool()
+            async with pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE documents SET status = 'failed', error = %s WHERE id = %s",
+                    (str(exc), doc_id),
+                )
+        except Exception as fallback_exc:  # noqa: BLE001 - last-resort guard
+            print(
+                f"Failed to mark document {doc_id} as 'failed': {fallback_exc!r} "
+                f"(original error: {exc!r})",
+                file=sys.stderr,
             )

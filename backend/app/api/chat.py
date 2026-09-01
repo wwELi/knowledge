@@ -12,7 +12,6 @@ import json
 from collections.abc import AsyncIterator
 
 import httpx
-import psycopg
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pgvector import Vector
@@ -126,7 +125,10 @@ async def _stream(request: Request, body: ChatRequest, top_k: int) -> AsyncItera
 
     try:
         hits = await _retrieve(question, top_k)
-    except psycopg.Error:
+    except Exception:  # noqa: BLE001 - deliberate SSE boundary, see comment below
+        # Broad on purpose: embed/pool failures are not all psycopg errors, and
+        # a stream that already sent 200 must end with an error frame, not break.
+        # CancelledError is a BaseException, so disconnects still propagate.
         for frame in _error_frames("检索知识库失败，请稍后重试。"):
             yield frame
         return
@@ -173,7 +175,8 @@ async def _stream(request: Request, body: ChatRequest, top_k: int) -> AsyncItera
                     yield _sse_data(data)
                     if data == "[DONE]":
                         return
-    except httpx.HTTPError:
+    except Exception:  # noqa: BLE001 - deliberate SSE boundary, see comment below
+        # Same boundary rule: any upstream failure still delivers error + [DONE].
         for frame in _error_frames("调用模型服务失败，请稍后重试。"):
             yield frame
         return
