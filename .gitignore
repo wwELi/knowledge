@@ -1,0 +1,9 @@
+.env
+backend/data/
+node_modules/
+dist/
+__pycache__/
+.venv/
+.codegraph
+.codegraph/
+.omo/
