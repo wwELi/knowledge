@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import documents
+
 app = FastAPI(title="Knowledge Base RAG")
 
 app.add_middleware(
@@ -17,6 +19,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# Router registration placeholders:
-# - T6 (document ingest API): app.include_router(...)
-# - T7 (query/chat API): app.include_router(...)
+app.include_router(documents.router)
+
+# Router registration for T7 (query/chat API): app.include_router(...)
