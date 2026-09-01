@@ -7,3 +7,4 @@ __pycache__/
 .codegraph
 .codegraph/
 .omo/
+.playwright-mcp/
