@@ -28,14 +28,22 @@ PAGES: list[list[str]] = [
 ]
 
 
+FIXED_DATE = "D:20260101000000Z"
+
+
 def make_sample_pdf(out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc = pymupdf.open()
+    doc.set_metadata({
+        "producer": "make_sample_pdf",
+        "creationDate": FIXED_DATE,
+        "modDate": FIXED_DATE,
+    })
     for lines in PAGES:
         page = doc.new_page(width=PAGE_SIZE[0], height=PAGE_SIZE[1])
         rect = pymupdf.Rect(72, 72, PAGE_SIZE[0] - 72, PAGE_SIZE[1] - 72)
         page.insert_textbox(rect, "\n".join(lines), fontname="china-s", fontsize=12)
-    doc.save(str(out_path))
+    doc.save(str(out_path), no_new_id=True)
     doc.close()
 
 
