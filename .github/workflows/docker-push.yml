@@ -1,0 +1,92 @@
+# 构建前后端 Docker 镜像并推送到阿里云 ACR，然后把 docker-compose.yml
+# 中 backend/frontend 的 image tag 固定到本次短 sha，提交回 main。
+#
+# 使用前需在 GitHub 仓库 Settings → Secrets and variables → Actions 配置：
+#   - ALIYUN_REGISTRY_USERNAME: 阿里云 ACR 用户名
+#   - ALIYUN_REGISTRY_PASSWORD: 阿里云 ACR 密码（不是阿里云登录密码，是 ACR 独立密码）
+# 任一 secret 缺失时登录前置检查会直接报错退出，不会静默跳过推送。
+name: docker-push
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 串行化：避免两次推送并发跑时 sed/compose 提交互相覆盖
+concurrency:
+  group: docker-push-${{ github.ref }}
+  cancel-in-progress: false
+
+# 推送 docker-compose.yml 回 main 需要 contents: write
+permissions:
+  contents: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: crpi-xl3t7d13ry0xdv7c.cn-beijing.personal.cr.aliyuncs.com
+      NAMESPACE: ww_images
+      BACKEND_REPO: kb_backend
+      FRONTEND_REPO: kb_web
+      # 短 sha（8 位）作为镜像版本号
+      TAG: ${GITHUB_SHA::8}
+      ACR_USER: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+      ACR_PASS: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check secrets configured
+        run: |
+          if [[ -z "$ACR_USER" || -z "$ACR_PASS" ]]; then
+            echo "::error::缺少 secrets：请在 repo Settings → Secrets and variables → Actions 配置 ALIYUN_REGISTRY_USERNAME / ALIYUN_REGISTRY_PASSWORD"
+            exit 1
+          fi
+
+      - name: Login to Alibaba Cloud ACR
+        # 密码走 stdin，避免 -p 的 deprecation 警告与进程列表泄露
+        run: |
+          echo "$ACR_PASS" | docker login "$REGISTRY" -u "$ACR_USER" --password-stdin
+
+      - name: Build backend image
+        run: |
+          docker build -t "$REGISTRY/$NAMESPACE/$BACKEND_REPO:$TAG" \
+                       -t "$REGISTRY/$NAMESPACE/$BACKEND_REPO:latest" ./backend
+
+      - name: Build frontend image
+        # VITE_API_BASE_URL 留空：走 nginx 把 /api/ 反代到 backend:8000
+        run: |
+          docker build --build-arg VITE_API_BASE_URL= \
+                       -t "$REGISTRY/$NAMESPACE/$FRONTEND_REPO:$TAG" \
+                       -t "$REGISTRY/$NAMESPACE/$FRONTEND_REPO:latest" ./frontend
+
+      - name: Push images
+        run: |
+          docker push "$REGISTRY/$NAMESPACE/$BACKEND_REPO:$TAG"
+          docker push "$REGISTRY/$NAMESPACE/$BACKEND_REPO:latest"
+          docker push "$REGISTRY/$NAMESPACE/$FRONTEND_REPO:$TAG"
+          docker push "$REGISTRY/$NAMESPACE/$FRONTEND_REPO:latest"
+
+      - name: Pin docker-compose.yml to pushed tag
+        run: |
+          sed -i \
+            -e "s#image: $REGISTRY/$NAMESPACE/$BACKEND_REPO:.*#image: $REGISTRY/$NAMESPACE/$BACKEND_REPO:$TAG#" \
+            -e "s#image: $REGISTRY/$NAMESPACE/$FRONTEND_REPO:.*#image: $REGISTRY/$NAMESPACE/$FRONTEND_REPO:$TAG#" \
+            docker-compose.yml
+          grep -n "image: $REGISTRY" docker-compose.yml
+
+      - name: Commit compose pin back
+        # [skip ci] 防止该提交再次触发本 workflow 造成死循环
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docker-compose.yml
+          if git diff --cached --quiet; then
+            echo "docker-compose.yml 无变化（tag 已一致），跳过提交"
+          else
+            git commit -m "ci: pin images to $TAG [skip ci]"
+            git push
+          fi
