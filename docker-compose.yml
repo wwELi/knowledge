@@ -17,8 +17,9 @@ services:
 
   backend:
     # 阿里云 ACR 镜像：docker compose up 优先用已有/可拉取的 image；
-    # 本地重新构建用 docker compose up --build。tag 由 CI 固定为短 sha。
-    image: crpi-xl3t7d13ry0xdv7c.cn-beijing.personal.cr.aliyuncs.com/ww_images/kb_backend:f20119726f756e384eaf664f645ba6225b119ce7
+    # 本地重新构建用 docker compose up --build。tag 用 latest 占位符，
+    # 具体版本由 CI 推送到 ACR 后由 ECS 端 pull latest 使用。
+    image: crpi-xl3t7d13ry0xdv7c.cn-beijing.personal.cr.aliyuncs.com/ww_images/kb_backend:latest
     build: ./backend
     ports:
       - "8000:8000"
@@ -33,7 +34,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: crpi-xl3t7d13ry0xdv7c.cn-beijing.personal.cr.aliyuncs.com/ww_images/kb_web:f20119726f756e384eaf664f645ba6225b119ce7
+    image: crpi-xl3t7d13ry0xdv7c.cn-beijing.personal.cr.aliyuncs.com/ww_images/kb_web:latest
     build:
       context: ./frontend
       args:

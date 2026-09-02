@@ -1,9 +1,13 @@
-# 构建前后端 Docker 镜像并推送到阿里云 ACR，然后把 docker-compose.yml
-# 中 backend/frontend 的 image tag 固定到本次短 sha，提交回 main。
+# 构建前后端 Docker 镜像并推送到阿里云 ACR，然后通过 SSH 将 docker-compose.yml
+# 部署到 ECS（pull latest 并重启服务）。
 #
 # 使用前需在 GitHub 仓库 Settings → Secrets and variables → Actions 配置：
 #   - ALIYUN_REGISTRY_USERNAME: 阿里云 ACR 用户名
 #   - ALIYUN_REGISTRY_PASSWORD: 阿里云 ACR 密码（不是阿里云登录密码，是 ACR 独立密码）
+#   - ECS_HOST: ECS 服务器 IP 或域名
+#   - ECS_USER: SSH 登录用户名
+#   - ECS_SSH_KEY: SSH 私钥内容
+#   - LLM_API_KEY: 上生产必配，写入 ECS 上 /opt/kb/.env 供 compose 读取
 # 任一 secret 缺失时登录前置检查会直接报错退出，不会静默跳过推送。
 name: docker-push
 
@@ -12,14 +16,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# 串行化：避免两次推送并发跑时 sed/compose 提交互相覆盖
+# 串行化：避免两次推送并发跑时互相覆盖
 concurrency:
   group: docker-push-${{ github.ref }}
   cancel-in-progress: false
 
-# 推送 docker-compose.yml 回 main 需要 contents: write
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-and-push:
@@ -29,15 +32,12 @@ jobs:
       NAMESPACE: ww_images
       BACKEND_REPO: kb_backend
       FRONTEND_REPO: kb_web
-      # 短 sha（8 位）作为镜像版本号
       TAG: ${{ github.sha }}
       ACR_USER: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
       ACR_PASS: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Check secrets configured
         run: |
@@ -70,23 +70,28 @@ jobs:
           docker push "$REGISTRY/$NAMESPACE/$FRONTEND_REPO:$TAG"
           docker push "$REGISTRY/$NAMESPACE/$FRONTEND_REPO:latest"
 
-      - name: Pin docker-compose.yml to pushed tag
+      - name: Encode compose file for transfer
         run: |
-          sed -i \
-            -e "s#image: $REGISTRY/$NAMESPACE/$BACKEND_REPO:.*#image: $REGISTRY/$NAMESPACE/$BACKEND_REPO:$TAG#" \
-            -e "s#image: $REGISTRY/$NAMESPACE/$FRONTEND_REPO:.*#image: $REGISTRY/$NAMESPACE/$FRONTEND_REPO:$TAG#" \
-            docker-compose.yml
-          grep -n "image: $REGISTRY" docker-compose.yml
+          echo "COMPOSE_B64=$(base64 -w0 docker-compose.yml)" >> "$GITHUB_ENV"
 
-      - name: Commit compose pin back
-        # [skip ci] 防止该提交再次触发本 workflow 造成死循环
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docker-compose.yml
-          if git diff --cached --quiet; then
-            echo "docker-compose.yml 无变化（tag 已一致），跳过提交"
-          else
-            git commit -m "ci: pin images to $TAG [skip ci]"
-            git push
-          fi
+      - name: Deploy to ECS via SSH
+        # 写入 compose 到 /opt/kb，维护同目录 .env 的 LLM_API_KEY（保留其余项），
+        # 登录 ACR 后 pull latest 并重启服务。
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          envs: LLM_API_KEY,REGISTRY
+          script: |
+            mkdir -p /opt/kb
+            printf '%s' '${{ env.COMPOSE_B64 }}' | base64 -d > /opt/kb/docker-compose.yml
+            touch /opt/kb/.env
+            sed -i '/^LLM_API_KEY=/d' /opt/kb/.env
+            printf 'LLM_API_KEY=%s\n' "$LLM_API_KEY" >> /opt/kb/.env
+            cd /opt/kb
+            docker login $REGISTRY -u '${{ secrets.ALIYUN_REGISTRY_USERNAME }}' -p '${{ secrets.ALIYUN_REGISTRY_PASSWORD }}'
+            docker compose pull
+            docker compose up -d
