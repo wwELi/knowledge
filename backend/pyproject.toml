@@ -15,4 +15,6 @@ dependencies = [
     "pymupdf>=1.28.2",
     "python-multipart>=0.0.32",
     "uvicorn[standard]>=0.52.4",
+    "alembic>=1.19.1",
+    "psycopg2-binary>=2.9.12",
 ]

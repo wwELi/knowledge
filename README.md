@@ -91,10 +91,12 @@ backend/
 │       ├── chunker.py            # 递归分块：500 字符/80 重叠，CJK 分隔符，逐页
 │       ├── embedder.py           # 向量化：fastembed BAAI/bge-small-zh-v1.5（512 维）
 │       └── pipeline.py           # 摄取编排：extract_pages → recursive_chunk → embed_texts → INSERT
-├── db/
-│   └── init.sql                  # 建表 DDL：documents + chunks + HNSW 索引 (vector_cosine_ops)
+├── alembic/                      # 数据库迁移（Alembic 管理，raw SQL）
+│   ├── env.py                    # 从 app.config 注入 DATABASE_URL
+│   └── versions/
+│       └── 0001_initial_schema.py  # 建表 DDL：documents + chunks + HNSW 索引 (vector_cosine_ops)
 ├── scripts/
-│   ├── init_db.py                # 数据库初始化脚本（执行 init.sql，幂等）
+│   ├── init_db.py                # 数据库初始化脚本（运行 alembic upgrade head，幂等）
 │   ├── make_sample_pdf.py        # 生成 3 页中文样例 PDF（pymupdf 内置 CJK 字体）
 │   └── smoke.py                  # 端到端冒烟测试（上传 → ready → 流式问答断言 + --expect-unrelated）
 ├── data/                         # 上传文件存储（gitignored）

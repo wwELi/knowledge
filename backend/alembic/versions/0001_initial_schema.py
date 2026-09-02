@@ -1,6 +1,17 @@
--- Schema for the local knowledge base RAG app (idempotent).
--- Apply via: cd backend && uv run python scripts/init_db.py
+"""Initial schema: pgvector extension, documents + chunks tables, HNSW index.
 
+Mirrors the former backend/db/init.sql exactly (IF NOT EXISTS kept so the
+first upgrade also succeeds on a database bootstrapped by the old script).
+"""
+
+from alembic import op
+
+revision = "0001"
+down_revision = None
+branch_labels = None
+depends_on = None
+
+CREATE_SQL = """
 CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS documents (
@@ -26,3 +37,20 @@ CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw_idx
     WITH (m = 16, ef_construction = 128);
 
 CREATE INDEX IF NOT EXISTS chunks_document_id_idx ON chunks (document_id);
+"""
+
+DROP_SQL = """
+DROP INDEX IF EXISTS chunks_document_id_idx;
+DROP INDEX IF EXISTS chunks_embedding_hnsw_idx;
+DROP TABLE IF EXISTS chunks;
+DROP TABLE IF EXISTS documents;
+DROP EXTENSION IF EXISTS vector;
+"""
+
+
+def upgrade() -> None:
+    op.execute(CREATE_SQL)
+
+
+def downgrade() -> None:
+    op.execute(DROP_SQL)
