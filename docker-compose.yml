@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg17
+    image: docker.m.daocloud.io/pgvector/pgvector:pg17
     ports:
       - "5433:5432"
     environment:
