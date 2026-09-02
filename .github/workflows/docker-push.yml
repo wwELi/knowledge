@@ -30,7 +30,7 @@ jobs:
       BACKEND_REPO: kb_backend
       FRONTEND_REPO: kb_web
       # 短 sha（8 位）作为镜像版本号
-      TAG: ${GITHUB_SHA::8}
+      TAG: ${{ github.job }}
       ACR_USER: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
       ACR_PASS: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
