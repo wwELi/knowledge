@@ -1,0 +1,8 @@
+.venv/
+data/
+.ruff_cache/
+.omo/
+.DS_Store
+__pycache__/
+*.pyc
+Dockerfile

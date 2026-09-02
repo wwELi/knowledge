@@ -1,4 +1,7 @@
-export const BASE_URL = 'http://localhost:8000'
+// 必须用 ??：Docker 构建传 VITE_API_BASE_URL=''（空串），若用 || 会回退到
+// localhost:8000，而该 origin 不在后端 CORS 白名单（仅 localhost:5173）会跨域失败。
+// ?? 保留空串 → 相对路径 /api/ 走 nginx 代理；本地 dev 无此变量 → undefined → 回退直连。
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 /** 文档元数据，与后端 `GET /api/documents` 返回字段逐一对应（id 为 UUID 字符串） */
 export interface DocMeta {
